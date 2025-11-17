@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health Classifier Demo</title>
+    <!-- 1. Load Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Use the "Inter" font family -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for a more modern feel */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937; /* gray-800 */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563; /* gray-600 */
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280; /* gray-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 h-full flex items-center justify-center p-4">
+
+    <main class="w-full max-w-xl">
+        <!-- Main Card -->
+        <div class="bg-gray-800 shadow-2xl rounded-2xl p-6 md:p-10">
+            <h1 class="text-3xl font-bold text-center text-white mb-2">
+                Health Condition Classifier
+            </h1>
+            <p class="text-center text-blue-400 mb-6">
+                (1D CNN Simulation for Project Review)
+            </p>
+            <p class="text-sm text-gray-400 mb-8 text-center">
+                This page simulates a trained model. Enter the features that our ESP32 sensors would extract, and the model will classify the health condition.
+            </p>
+
+            <!-- Input Form -->
+            <form id="classifier-form" class="space-y-6">
+                
+                <!-- Grid for inputs -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- PPG Heart Rate -->
+                    <div>
+                        <label for="ppg_bpm" class="block text-sm font-medium text-gray-300 mb-1">PPG Heart Rate (BPM)</label>
+                        <input type="number" id="ppg_bpm" value="75" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <p class="text-xs text-gray-500 mt-1">From MAX30102 sensor.</p>
+                    </div>
+
+                    <!-- ECG Heart Rate -->
+                    <div>
+                        <label for="ecg_bpm" class="block text-sm font-medium text-gray-300 mb-1">ECG Heart Rate (BPM)</label>
+                        <input type="number" id="ecg_bpm" value="75" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <p class="text-xs text-gray-500 mt-1">From AD8232 sensor.</p>
+                    </div>
+
+                    <!-- SpO2 -->
+                    <div>
+                        <label for="spo2" class="block text-sm font-medium text-gray-300 mb-1">Blood Oxygen (SpO2 %)</label>
+                        <input type="number" id="spo2" value="98" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <p class="text-xs text-gray-500 mt-1">From MAX30102 sensor.</p>
+                    </div>
+
+                    <!-- HRV (SDNN) -->
+                    <div>
+                        <label for="hrv_sdnn" class="block text-sm font-medium text-gray-300 mb-1">HRV (SDNN in ms)</label>
+                        <input type="number" id="hrv_sdnn" value="40" class="w-full bg-gray-700 border border-gray-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <p class="text-xs text-gray-500 mt-1">From ECG R-R analysis (1D CNN output).</p>
+                    </div>
+                </div>
+
+                <!-- Classify Button -->
+                <button id="analyze-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg text-lg transition duration-200 shadow-lg">
+                    Classify Condition
+                </button>
+            </form>
+
+            <!-- Result Card (Hidden by default) -->
+            <div id="result-card" class="hidden mt-8 border border-gray-700 rounded-lg overflow-hidden shadow-xl">
+                <!-- Result Header -->
+                <div id="result-header" class="p-4">
+                    <h2 class="text-xl font-bold text-white text-center" id="result-condition">
+                        <!-- Condition will be inserted here -->
+                    </h2>
+                </div>
+                <!-- Result Body -->
+                <div class="p-6 bg-gray-800">
+                    <h3 class="font-semibold text-lg text-gray-300 mb-2">Details:</h3>
+                    <p class="text-gray-400" id="result-description">
+                        <!-- Description will be inserted here -->
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const analyzeButton = document.getElementById('analyze-button');
+            const form = document.getElementById('classifier-form');
+            
+            const ppgBpmEl = document.getElementById('ppg_bpm');
+            const ecgBpmEl = document.getElementById('ecg_bpm');
+            const spo2El = document.getElementById('spo2');
+            const hrvSdnnEl = document.getElementById('hrv_sdnn');
+            
+            const resultCard = document.getElementById('result-card');
+            const resultHeader = document.getElementById('result-header');
+            const resultCondition = document.getElementById('result-condition');
+            const resultDescription = document.getElementById('result-description');
+
+            // --- The "Model" Logic ---
+            // This function simulates a trained classifier.
+            function classifyCondition(ppg_BPM, ecg_BPM, spO2, hrv_sdnn) {
+                
+                // Priority 1: Check for low oxygen
+                if (spO2 < 92) {
+                    return {
+                        condition: "Hypoxemia",
+                        description: "Severely low blood oxygen levels. This is a critical respiratory or circulatory issue. Immediate medical attention may be required.",
+                        isAbnormal: true
+                    };
+                }
+
+                // Priority 2: Check for fast heart rate
+                if (ppg_BPM > 100 || ecg_BPM > 100) {
+                    return {
+                        condition: "Tachycardia",
+                        description: "A resting heart rate that is too fast (over 100 BPM). This can be caused by stress, fever, or an underlying heart condition.",
+                        isAbnormal: true
+                    };
+                }
+
+                // Priority 3: Check for slow heart rate
+                if (ppg_BPM < 60 || ecg_BPM < 60) {
+                    return {
+                        condition: "Bradycardia",
+                        description: "A resting heart rate that is too slow (under 60 BPM). While common in athletes, it can also indicate a problem with the heart's electrical signaling.",
+                        isAbnormal: true
+                    };
+                }
+
+                // Priority 4: Check for Arrhythmia (High HRV)
+                // This is what the 1D CNN would be great at finding.
+                if (hrv_sdnn > 100) {
+                    return {
+                        condition: "Possible Arrhythmia (High HRV)",
+                        description: "Heart Rate Variability (SDNN) is very high, indicating an 'irregularly irregular' rhythm. This is a strong indicator for conditions like Atrial Fibrillation (AFib).",
+                        isAbnormal: true
+                    };
+                }
+
+                // Priority 5: Check for Arrhythmia (Pulse Deficit)
+                if (Math.abs(ppg_BPM - ecg_BPM) > 15) {
+                    return {
+                        condition: "Possible Arrhythmia (Pulse Deficit)",
+                        description: "The heart's electrical pulse (ECG) is beating more often than the mechanical blood pulse (PPG). This can indicate premature beats (PVCs) that don't pump blood.",
+                        isAbnormal: true
+                    };
+                }
+
+                // If no other conditions are met:
+                return {
+                    condition: "Normal Sinus Rhythm",
+                    description: "All sensor readings appear to be within normal ranges. Heart rate is consistent, rhythm is regular, and blood oxygenation is sufficient.",
+                    isAbnormal: false
+                };
+            }
+            
+            // --- Event Listener for the Button ---
+            analyzeButton.addEventListener('click', (e) => {
+                e.preventDefault(); // Stop form from submitting
+                
+                // 1. Get values from form
+                const ppg_BPM = parseFloat(ppgBpmEl.value);
+                const ecg_BPM = parseFloat(ecgBpmEl.value);
+                const spO2 = parseFloat(spo2El.value);
+                const hrv_sdnn = parseFloat(hrvSdnnEl.value);
+
+                // 2. Run the "model"
+                const result = classifyCondition(ppg_BPM, ecg_BPM, spO2, hrv_sdnn);
+
+                // 3. Update the UI
+                resultCard.classList.remove('hidden'); // Show the result card
+                resultCondition.textContent = result.condition;
+                resultDescription.textContent = result.description;
+                
+                // Clear old colors
+                resultHeader.classList.remove('bg-green-600', 'bg-red-600');
+                
+                // Set new color based on result
+                if (result.isAbnormal) {
+                    resultHeader.classList.add('bg-red-600');
+                } else {
+                    resultHeader.classList.add('bg-green-600');
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>
